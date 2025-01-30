@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU Comparison Table</title>
+    <style>
+        /* General Reset */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f8f9fa;
+            color: #333;
+            text-align: center;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #444;
+            margin-bottom: 10px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        thead {
+            background-color: #007bff;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        th, td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+
+        tbody tr:nth-child(odd) {
+            background-color: #f2f2f2;
+        }
+
+        tbody tr:hover {
+            background-color: #e9ecef;
+            cursor: pointer;
+        }
+
+        .legend {
+            margin-top: 20px;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 5px;
+            display: inline-block;
+        }
+
+        .legend span {
+            display: inline-block;
+            padding: 5px 10px;
+            margin-right: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .good { background: #28a745; color: white; }
+        .average { background: #ffc107; color: black; }
+        .bad { background: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+
+    <h1>GPU Comparison Table</h1>
+    <p>Comprehensive guide to choosing the right GPU for gaming, AI/ML, and general use.</p>
+
+    <div class="container">
+        <table>
+            <thead>
+                <tr>
+                    <th>GPU Model</th>
+                    <th>VRAM</th>
+                    <th>CUDA Cores / Stream Processors</th>
+                    <th>Architecture</th>
+                    <th>PCIe Version</th>
+                    <th>Gaming Performance</th>
+                    <th>AI/ML Capability</th>
+                    <th>Value</th>
+                    <th>Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>AISURIX RX 580 2048SP 8GB</td>
+                    <td>8GB GDDR5</td>
+                    <td>2048SP (AMD)</td>
+                    <td>Polaris</td>
+                    <td>PCIe 3.0</td>
+                    <td class="average">Medium</td>
+                    <td class="bad">❌ No CUDA</td>
+                    <td class="good">✅ Cheap</td>
+                    <td>$92.99</td>
+                </tr>
+                <tr>
+                    <td>Maxsun RX 580 2048SP 8GB</td>
+                    <td>8GB GDDR5</td>
+                    <td>2048SP (AMD)</td>
+                    <td>Polaris</td>
+                    <td>PCIe 3.0</td>
+                    <td class="average">Medium</td>
+                    <td class="bad">❌ No CUDA</td>
+                    <td class="good">✅ Cheap</td>
+                    <td>$109.99</td>
+                </tr>
+                <tr>
+                    <td>NVIDIA GTX 1080 Ti 11GB</td>
+                    <td>11GB GDDR5X</td>
+                    <td>3584 CUDA</td>
+                    <td>Pascal</td>
+                    <td>PCIe 3.0</td>
+                    <td class="good">Ultra</td>
+                    <td class="good">✅ Great</td>
+                    <td class="average">⚠️ Expensive</td>
+                    <td>$250+</td>
+                </tr>
+                <tr>
+                    <td>NVIDIA RTX 3060 12GB</td>
+                    <td>12GB GDDR6</td>
+                    <td>3584 CUDA</td>
+                    <td>Ampere</td>
+                    <td>PCIe 4.0</td>
+                    <td class="good">Ultra</td>
+                    <td class="good">✅ Best Budget AI</td>
+                    <td class="good">✅ Good</td>
+                    <td>$300+</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="legend">
+        <strong>Legend:</strong>
+        <span class="good">✅ Good</span>
+        <span class="average">⚠️ Average</span>
+        <span class="bad">❌ Poor</span>
+    </div>
+
+</body>
+</html>
