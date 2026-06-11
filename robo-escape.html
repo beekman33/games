@@ -13,6 +13,7 @@
 </script>
 
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Retro Run Riot - 3 Level Edition</title>
   <!-- Import a sci‑fi font -->
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
@@ -30,18 +31,77 @@
       background: #111;
       image-rendering: pixelated;
       outline: none;
+      touch-action: none;
+    }
+    /* Mobile touch controls */
+    .touch-controls {
+      display: none;
+      position: fixed;
+      bottom: 20px;
+      width: 100%;
+      text-align: center;
+      gap: 20px;
+      justify-content: center;
+    }
+    .touch-btn {
+      width: 60px;
+      height: 60px;
+      font-size: 24px;
+      border: 2px solid #0ff;
+      background: rgba(0, 255, 255, 0.2);
+      color: #0ff;
+      cursor: pointer;
+      border-radius: 8px;
+      font-family: 'Orbitron', monospace;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .touch-btn:active {
+      background: rgba(0, 255, 255, 0.5);
+    }
+    @media (max-width: 768px) {
+      .touch-controls {
+        display: flex;
+      }
     }
   </style>
 </head>
 <body>
   <!-- tabindex ensures key events work -->
   <canvas id="gameCanvas" width="600" height="300" tabindex="1"></canvas>
-  <!-- Background Music: Place your SID file as "c64.sid" in the same directory -->
-  <audio id="bgMusic" loop>
-    <source src="c64.sid" type="audio/x-sid">
-    Your browser does not support the SID audio format.
+  <!-- Background Music: Now supports MP3 and OGG formats -->
+  <audio id="bgMusic" loop preload="auto">
+    <source src="game-music.mp3" type="audio/mpeg">
+    <source src="game-music.ogg" type="audio/ogg">
+    Your browser does not support the audio format.
   </audio>
+  
+  <!-- Mobile touch controls -->
+  <div class="touch-controls">
+    <button class="touch-btn" id="leftBtn">←</button>
+    <button class="touch-btn" id="jumpBtn">↑</button>
+    <button class="touch-btn" id="rightBtn">→</button>
+  </div>
+
   <script>
+    // ===== Configuration Constants =====
+    const CONFIG = {
+      LEVEL_DURATION: 30,
+      GROUND_Y: 250,
+      POINTS_TO_WIN: 1000,
+      PLAYER_SPEED: 3,
+      SPAWN_INTERVAL_BASE: 2.0,
+      SPAWN_INTERVAL_SCALE: 0.1,
+      OBSTACLE_SPEED_BASE: 3,
+      OBSTACLE_SPEED_MULTIPLIER: 1.5,
+      COIN_SPAWN_BASE: 3.0,
+      COIN_SPAWN_SCALE: 0.1,
+      COIN_SPEED_BASE: 3,
+      COIN_SPEED_SCALE: 0.5,
+      INVINCIBILITY_DURATION: 1.5,
+      AFTERIMAGE_MAX: 10
+    };
+
     // ===== Global Variables and Setup =====
     const canvas = document.getElementById('gameCanvas');
     canvas.focus();
@@ -50,21 +110,26 @@
     // Start background music on first user interaction.
     const bgMusic = document.getElementById("bgMusic");
     // Attempt to play when the user first clicks or presses a key.
-    document.addEventListener("keydown", () => { bgMusic.play(); }, { once: true });
+    document.addEventListener("keydown", () => { bgMusic.play().catch(() => {}); }, { once: true });
+    document.addEventListener("click", () => { bgMusic.play().catch(() => {}); }, { once: true });
 
     // Audio Context for simple sound effects.
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     function playSound(frequency, type, duration) {
-      let randFactor = 0.95 + Math.random() * 0.1;
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      oscillator.frequency.value = frequency * randFactor;
-      oscillator.type = type;
-      oscillator.start();
-      gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
-      oscillator.stop(audioCtx.currentTime + duration);
+      try {
+        let randFactor = 0.95 + Math.random() * 0.1;
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.frequency.value = frequency * randFactor;
+        oscillator.type = type;
+        oscillator.start();
+        gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+        oscillator.stop(audioCtx.currentTime + duration);
+      } catch (e) {
+        // Silently fail if audio context is unavailable
+      }
     }
 
     // Key state handling for left/right movement.
@@ -93,21 +158,35 @@
       keys[e.code] = false;
     });
 
+    // Mobile touch controls
+    document.getElementById("leftBtn").addEventListener("touchstart", () => { keys["ArrowLeft"] = true; });
+    document.getElementById("leftBtn").addEventListener("touchend", () => { keys["ArrowLeft"] = false; });
+    document.getElementById("rightBtn").addEventListener("touchstart", () => { keys["ArrowRight"] = true; });
+    document.getElementById("rightBtn").addEventListener("touchend", () => { keys["ArrowRight"] = false; });
+    document.getElementById("jumpBtn").addEventListener("touchstart", () => {
+      if (gameState === "playing" && player.onGround) {
+        player.vy = player.jumpStrength;
+        player.onGround = false;
+        spawnParticleBurst();
+        spawnEnergyPulse();
+      }
+    });
+
     // Game States: "intro", "levelIntro", "playing", "levelEnd", "gameOver", "win"
     let gameState = "intro";
     let level = 1;
     let lives = 3;
     let levelScore = 0;
     let totalScore = 0;
-    const levelDuration = 30; // seconds per level
-    let levelTimeRemaining = levelDuration;
+    let levelTimeRemaining = CONFIG.LEVEL_DURATION;
     let lastTime = 0;
-    const groundY = 250;
+    let playerInvincibility = 0;
+    let levelUpAnimation = 0;
 
     // Player Object (our cute robot)
     const player = {
       x: 50,
-      y: groundY - 30,
+      y: CONFIG.GROUND_Y - 30,
       width: 20,
       height: 30,
       vy: 0,
@@ -115,7 +194,7 @@
       gravity: 0.5,
       onGround: true,
       wiggle: 0,
-      speed: 3 // horizontal movement speed
+      speed: CONFIG.PLAYER_SPEED
     };
 
     // Obstacles and Coins Arrays
@@ -123,18 +202,19 @@
     let coins = [];
     let obstacleSpawnTimer = 0;
     let coinSpawnTimer = 0;
+    
     function getObstacleSpawnInterval() {
-      return Math.max(1.0, 2.0 - level * 0.1);
+      return Math.max(1.0, CONFIG.SPAWN_INTERVAL_BASE - level * CONFIG.SPAWN_INTERVAL_SCALE);
     }
-    // Obstacle speed doubles each level.
+    // Improved difficulty scaling: gentler progression instead of exponential
     function getObstacleSpeed() {
-      return 3 * Math.pow(2, level - 1);
+      return CONFIG.OBSTACLE_SPEED_BASE * Math.pow(CONFIG.OBSTACLE_SPEED_MULTIPLIER, level - 1);
     }
     function getCoinSpawnInterval() {
-      return Math.max(1.5, 3.0 - level * 0.1);
+      return Math.max(1.5, CONFIG.COIN_SPAWN_BASE - level * CONFIG.COIN_SPAWN_SCALE);
     }
     function getCoinSpeed() {
-      return 3 + level * 0.5;
+      return CONFIG.COIN_SPEED_BASE + level * CONFIG.COIN_SPEED_SCALE;
     }
     let highScore = localStorage.getItem("retroRunRiotHighScore") || 0;
 
@@ -180,16 +260,18 @@
     }
     function resetLevel() {
       levelScore = 0;
-      levelTimeRemaining = levelDuration;
+      levelTimeRemaining = CONFIG.LEVEL_DURATION;
       obstacles = [];
       coins = [];
       obstacleSpawnTimer = 0;
       coinSpawnTimer = 0;
+      afterImages.length = 0; // Clear afterimages to prevent memory accumulation
       player.x = 50;
-      player.y = groundY - player.height;
+      player.y = CONFIG.GROUND_Y - player.height;
       player.vy = 0;
       player.onGround = true;
       player.wiggle = 0;
+      playerInvincibility = 0;
     }
     function resetGame() {
       level = 1;
@@ -356,7 +438,7 @@
         y: player.y,
         time: performance.now()
       });
-      if (afterImages.length > 10) afterImages.shift();
+      if (afterImages.length > CONFIG.AFTERIMAGE_MAX) afterImages.shift();
     }
     function drawAfterimages() {
       const now = performance.now();
@@ -376,6 +458,10 @@
       ctx.save();
       // Apply horizontal wiggle if hit.
       ctx.translate(player.wiggle, 0);
+      // Flash effect during invincibility
+      if (playerInvincibility > 0) {
+        ctx.globalAlpha = 0.5 + 0.5 * Math.sin(performance.now() / 50);
+      }
       // Set transformation origin to the center of the robot.
       const centerX = player.x + player.width / 2;
       const centerY = player.y + player.height / 2;
@@ -438,7 +524,6 @@
     }
 
     // ===== Player Physics and Horizontal Movement =====
-    let wasOnGround = true;
     function updatePlayerPhysics() {
       player.y += player.vy;
       player.vy += player.gravity;
@@ -447,26 +532,25 @@
       if (keys["ArrowRight"]) { player.x += player.speed; }
       if (player.x < 0) player.x = 0;
       if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
-      if (player.y >= groundY - player.height) {
+      if (player.y >= CONFIG.GROUND_Y - player.height) {
         if (!player.onGround) {
           player.wiggle = (Math.random()-0.5)*6;
           spawnParticleBurst();
           triggerShake(300,5);
           playSound(150,"square",0.1);
         }
-        player.y = groundY - player.height;
+        player.y = CONFIG.GROUND_Y - player.height;
         player.vy = 0;
         player.onGround = true;
         player.wiggle *= 0.8;
       } else { player.onGround = false; }
-      wasOnGround = player.onGround;
     }
 
     // ===== Funny Obstacles with Animated Faces =====
     function spawnObstacle() {
       const obstacle = {
         x: canvas.width,
-        y: groundY - 20,
+        y: CONFIG.GROUND_Y - 20,
         width: 20,
         height: 20,
         color: "rgb(" + (180 + Math.floor(Math.random()*76)) + ",0,0)"
@@ -574,7 +658,7 @@
     function spawnCoin() {
       const coin = {
         x: canvas.width,
-        y: groundY - 20 - Math.random()*50,
+        y: CONFIG.GROUND_Y - 20 - Math.random()*50,
         radius: 10,
         width: 20,
         height: 20,
@@ -638,7 +722,8 @@
       ctx.textAlign = "center";
       ctx.fillText("Level " + level, canvas.width/2, canvas.height/2 - 20);
       ctx.font = "16px 'Orbitron', monospace";
-      ctx.fillText("Press Enter to Begin", canvas.width/2, canvas.height/2 + 20);
+      ctx.fillText("Collect " + CONFIG.POINTS_TO_WIN + " points to win!", canvas.width/2, canvas.height/2 + 5);
+      ctx.fillText("Press Enter to Begin", canvas.width/2, canvas.height/2 + 25);
     }
     function drawLevelEnd() {
       ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -647,7 +732,7 @@
       ctx.fillStyle = "#fff";
       ctx.font = "30px 'Orbitron', monospace";
       ctx.textAlign = "center";
-      if (levelScore >= 1000) {
+      if (levelScore >= CONFIG.POINTS_TO_WIN) {
         ctx.fillText("Level Complete!", canvas.width/2, canvas.height/2 - 20);
         spawnConfetti();
         ctx.font = "16px 'Orbitron', monospace";
@@ -655,7 +740,8 @@
       } else {
         ctx.fillText("Level Failed!", canvas.width/2, canvas.height/2 - 20);
         ctx.font = "16px 'Orbitron', monospace";
-        ctx.fillText("Press Enter to Retry", canvas.width/2, canvas.height/2 + 20);
+        ctx.fillText("Need " + CONFIG.POINTS_TO_WIN + " points. You got " + levelScore, canvas.width/2, canvas.height/2 + 5);
+        ctx.fillText("Press Enter to Retry", canvas.width/2, canvas.height/2 + 25);
       }
     }
     function drawGameOver() {
@@ -685,6 +771,60 @@
       ctx.fillText("High Score: " + highScore, canvas.width/2, canvas.height/2 + 30);
       ctx.fillText("Press Enter to Restart", canvas.width/2, canvas.height/2 + 50);
     }
+    
+    // ===== Level Up Animation =====
+    let levelUpParticles = [];
+    function spawnLevelUpAnimation() {
+      levelUpAnimation = 2.0;
+      for (let i = 0; i < 20; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 3 + 2;
+        levelUpParticles.push({
+          x: canvas.width / 2,
+          y: canvas.height / 2,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 1.0,
+          color: `hsl(${Math.random() * 360}, 100%, 50%)`
+        });
+      }
+    }
+    function updateLevelUpAnimation(delta) {
+      if (levelUpAnimation > 0) {
+        levelUpAnimation -= delta;
+        for (let i = levelUpParticles.length - 1; i >= 0; i--) {
+          let p = levelUpParticles[i];
+          p.x += p.vx;
+          p.y += p.vy;
+          p.life -= delta;
+          if (p.life <= 0) {
+            levelUpParticles.splice(i, 1);
+          }
+        }
+      }
+    }
+    function drawLevelUpAnimation() {
+      if (levelUpAnimation > 0) {
+        ctx.save();
+        ctx.globalAlpha = levelUpAnimation * 0.5;
+        ctx.font = "bold 60px 'Orbitron', monospace";
+        ctx.fillStyle = "#0f0";
+        ctx.textAlign = "center";
+        ctx.fillText("LEVEL UP!", canvas.width / 2, canvas.height / 2);
+        ctx.restore();
+        
+        levelUpParticles.forEach(p => {
+          ctx.save();
+          ctx.globalAlpha = p.life;
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        });
+      }
+    }
+
     function drawHUD() {
       ctx.fillStyle = "#fff";
       ctx.font = "16px 'Orbitron', monospace";
@@ -695,6 +835,24 @@
       ctx.fillText("Time: " + Math.floor(levelTimeRemaining), 10, 80);
       ctx.fillText("Total: " + totalScore, 10, 100);
       ctx.fillText("High: " + highScore, 10, 120);
+      
+      // Draw progress bar
+      const barWidth = 150;
+      const barHeight = 10;
+      const barX = canvas.width - barWidth - 10;
+      const barY = 10;
+      const progress = Math.min(levelScore / CONFIG.POINTS_TO_WIN, 1);
+      
+      ctx.strokeStyle = "#0ff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(barX, barY, barWidth, barHeight);
+      ctx.fillStyle = "#0f0";
+      ctx.fillRect(barX, barY, barWidth * progress, barHeight);
+      
+      ctx.fillStyle = "#fff";
+      ctx.font = "12px 'Orbitron', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(levelScore + "/" + CONFIG.POINTS_TO_WIN, barX + barWidth / 2, barY + 24);
     }
 
     // ===== Confetti Burst on Level Complete =====
@@ -743,7 +901,7 @@
       drawSillyClouds();
 
       ctx.fillStyle = "#444";
-      ctx.fillRect(0, groundY, canvas.width, canvas.height-groundY);
+      ctx.fillRect(0, CONFIG.GROUND_Y, canvas.width, canvas.height-CONFIG.GROUND_Y);
 
       ctx.save();
       applyCameraShake();
@@ -765,6 +923,7 @@
 
       drawPopups();
       drawConfetti();
+      drawLevelUpAnimation();
       drawHUD();
     }
 
@@ -783,6 +942,7 @@
           updateParticles(delta);
           updateEnergyPulses(delta);
           updateConfetti(delta);
+          updateLevelUpAnimation(delta);
           drawGame();
           break;
         case "levelEnd": drawLevelEnd(); break;
@@ -795,9 +955,14 @@
 
     // ===== Game Logic: Obstacles, Coins, and Scoring =====
     function updateGame(delta) {
+      // Update invincibility timer
+      if (playerInvincibility > 0) {
+        playerInvincibility -= delta;
+      }
+
       levelTimeRemaining -= delta;
       if (levelTimeRemaining <= 0) {
-        if (levelScore >= 1000) {
+        if (levelScore >= CONFIG.POINTS_TO_WIN) {
           totalScore += levelScore;
           level++;
           if (level > 3) {
@@ -807,6 +972,7 @@
               localStorage.setItem("retroRunRiotHighScore", highScore);
             }
           } else {
+            spawnLevelUpAnimation();
             gameState = "levelEnd";
           }
         } else {
@@ -830,16 +996,22 @@
       for (let i = obstacles.length - 1; i >= 0; i--) {
         obstacles[i].x -= getObstacleSpeed();
         if (rectCollision(player, obstacles[i])) {
-          addPopup("Ouch!", player.x+player.width/2, player.y);
-          lives--;
-          if (lives <= 0) {
-            gameState = "gameOver";
-            if (totalScore > highScore) {
-              highScore = totalScore;
-              localStorage.setItem("retroRunRiotHighScore", highScore);
+          // Only take damage if not invincible
+          if (playerInvincibility <= 0) {
+            addPopup("Ouch!", player.x+player.width/2, player.y);
+            lives--;
+            playerInvincibility = CONFIG.INVINCIBILITY_DURATION;
+            triggerShake(500, 8); // Stronger shake on collision
+            playSound(100, "square", 0.15);
+            if (lives <= 0) {
+              gameState = "gameOver";
+              if (totalScore > highScore) {
+                highScore = totalScore;
+                localStorage.setItem("retroRunRiotHighScore", highScore);
+              }
+            } else {
+              gameState = "levelEnd";
             }
-          } else {
-            gameState = "levelEnd";
           }
         }
         if (obstacles[i].x + obstacles[i].width < 0) {
@@ -859,7 +1031,8 @@
           playSound(800, "sine", 0.1);
           coins.splice(i, 1);
         }
-        if (coins[i] && coins[i].x + coins[i].radius*2 < 0) {
+        // FIXED: Use width instead of radius*2 for proper collision detection
+        if (coins[i] && coins[i].x + coins[i].width < 0) {
           coins.splice(i, 1);
         }
       }
